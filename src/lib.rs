@@ -1,6 +1,7 @@
 pub mod app;
 pub mod gameloop;
 pub mod gameoflife;
+pub mod gui;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 

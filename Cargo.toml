@@ -7,7 +7,7 @@ edition = "2024"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-sparmos-engine = { path = "../sparmos-engine" }
+sparmos-engine = { path = "../sparmos-engine", features = ["gui"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 console_error_panic_hook = "0.1"

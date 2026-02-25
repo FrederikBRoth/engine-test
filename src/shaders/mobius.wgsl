@@ -14,10 +14,19 @@ struct Light {
 @group(1) @binding(0)
 var<uniform> light: Light;
 
+struct Color {
+    color: vec3<f32>,
+    _pad: f32,
+};
+@group(2) @binding(0)
+var<storage, read> quad_colors: array<Color>;
+
 struct VertexInput {
     @location(0) position: vec3<f32>,
     @location(1) color: vec3<f32>,
     @location(2) normal: vec3<f32>,
+    @location(3) quad_id: u32,
+
 }
 struct InstanceInput {
     @location(5) model_matrix_0: vec4<f32>,
@@ -54,7 +63,8 @@ fn vs_main(
         instance.normal_matrix_2,
     );
     var out: VertexOutput;
-    out.color = vec3<f32>(instance.instance_color.x, instance.instance_color.y, instance.instance_color.z);
+    // out.color = vec3<f32>(instance.instance_color.x, instance.instance_color.y, instance.instance_color.z);
+    out.color = quad_colors[model.quad_id].color;
     out.world_normal = normalize(normal_matrix * model.normal); 
 
     var world_position: vec4<f32> = model_matrix * vec4<f32>(model.position, 1.0);
@@ -67,5 +77,20 @@ fn vs_main(
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 let ambient_strength = 0.1;
-    return vec4<f32>(in.color, 1.0);
+    let ambient_color = light.color * ambient_strength;
+
+    let light_dir = normalize(light.position - in.world_position);
+    let view_dir = normalize(camera.view_pos.xyz - in.world_position);
+    let half_dir = normalize(view_dir + light_dir);
+
+    let diffuse_strength = max(dot(in.world_normal, light_dir), 0.0);
+    let diffuse_color = light.color * diffuse_strength;
+
+    let specular_strength = pow(max(dot(in.world_normal, half_dir), 0.0), 32.0);
+    let specular_color = specular_strength * light.color;
+
+    let result = (ambient_color + diffuse_color + specular_color) * in.color;
+
+    
+    return vec4<f32>(result, 1.0);
 }

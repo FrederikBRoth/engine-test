@@ -73,11 +73,8 @@ impl AppLifecycle<WasmEvent, MyLoop> for MyGame {
     }
 
     fn on_device_event(&mut self, event: DeviceEvent, proxy: &mut State<MyLoop>) {
-        match event {
-            DeviceEvent::MouseMotion { delta } => {
-                proxy.game_loop.as_mut().unwrap().cursor_delta = delta;
-            }
-            _ => (),
+        if let DeviceEvent::MouseMotion { delta } = event {
+            proxy.game_loop.as_mut().unwrap().cursor_delta = delta;
         }
     }
 }
