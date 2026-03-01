@@ -5,7 +5,10 @@ pub mod gui;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
-use sparmos_engine::{core::state::GameLoop, prelude::run_game, wgpu, winit};
+use sparmos_engine::{application::state::Game, prelude::run_game, wgpu, winit};
+
+#[cfg(target_arch = "wasm32")]
+use crate::gameloop::MobiusVisualizer;
 
 // use app; // Removed because there is no external crate or module named 'app'
 
@@ -14,16 +17,14 @@ use sparmos_engine::{core::state::GameLoop, prelude::run_game, wgpu, winit};
 pub fn run_web() -> Result<(), wasm_bindgen::JsValue> {
     use crate::{
         app::{MyGame, WasmEvent},
-        gameloop::MyLoop,
+        gameloop::MobiusVisualizer,
     };
 
     console_error_panic_hook::set_once();
-    run_game::<WasmEvent, _, MyLoop>(
+    run_game::<WasmEvent, _, MobiusVisualizer>(
         MyGame { score: 0 },
-        MyLoop {
+        MobiusVisualizer {
             score: 0,
-            instance_controllers: vec![],
-            camera_controller: None,
             ..Default::default()
         },
     )

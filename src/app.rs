@@ -1,80 +1,88 @@
-#[cfg(target_arch = "wasm32")]
-use sparmos_engine::{core::event_loop::UserEvent, winit};
 use sparmos_engine::{
-    core::{event_loop::AppLifecycle, state::State},
+    application::{event_loop::AppLifecycle, state::State},
     log,
     winit::event::DeviceEvent,
 };
 
-use crate::gameloop::MyLoop;
+#[cfg(target_arch = "wasm32")]
+use sparmos_engine::{application::event_loop::UserEvent, winit};
 
 pub enum WasmEvent {
     ScrollPosition { x: f64, y: f64 },
     KeyboardButton { keypress: String },
 }
+
 pub struct MyGame {
     pub score: u32,
 }
 
-impl AppLifecycle<WasmEvent, MyLoop> for MyGame {
-    fn on_user_event(&mut self, state: &mut State<MyLoop>, event: WasmEvent) {
+impl AppLifecycle<WasmEvent> for MyGame {
+    fn on_user_event(&mut self, _state: &mut State, event: WasmEvent) {
         match event {
-            WasmEvent::ScrollPosition { x, y } => log::warn!("x: {}, y: {}", x, y),
-            WasmEvent::KeyboardButton { keypress } => log::warn!("keypress: {}", keypress),
+            WasmEvent::ScrollPosition { x, y } => {
+                log::warn!("scroll x: {}, y: {}", x, y);
+            }
+            WasmEvent::KeyboardButton { keypress } => {
+                log::warn!("keypress: {}", keypress);
+            }
         }
     }
+
     #[cfg(target_arch = "wasm32")]
-    fn on_resumed(
-        &mut self,
-        proxy: &winit::event_loop::EventLoopProxy<UserEvent<WasmEvent, MyLoop>>,
-    ) {
+    fn on_resumed(&mut self, proxy: &winit::event_loop::EventLoopProxy<UserEvent<WasmEvent>>) {
         use sparmos_engine::wgpu;
         use wasm_bindgen::{JsCast, prelude::Closure};
 
         let window = wgpu::web_sys::window().unwrap();
         let window_clone = window.clone();
 
-        let p = proxy.clone();
-        let closure2 = Closure::<dyn FnMut(_)>::new(move |_event: wgpu::web_sys::Event| {
+        // Scroll listener
+        let scroll_proxy = proxy.clone();
+        let scroll_closure = Closure::<dyn FnMut(_)>::new(move |_event: wgpu::web_sys::Event| {
             let x = window_clone.scroll_x().unwrap_or(0.0);
             let y = window_clone.scroll_y().unwrap_or(0.0);
 
-            // Send a custom event with the scroll data to your app
-            let _ = p.send_event(UserEvent::Custom(WasmEvent::ScrollPosition { x, y }));
+            let _ = scroll_proxy.send_event(UserEvent::Custom(WasmEvent::ScrollPosition { x, y }));
         });
 
         window
-            .add_event_listener_with_callback("scroll", closure2.as_ref().unchecked_ref())
+            .add_event_listener_with_callback("scroll", scroll_closure.as_ref().unchecked_ref())
             .unwrap();
 
-        closure2.forget();
+        scroll_closure.forget();
 
-        let p = proxy.clone();
-        let closure = Closure::<dyn FnMut(_)>::new(move |event: wgpu::web_sys::Event| {
+        // Keyboard listener
+        let key_proxy = proxy.clone();
+        let key_closure = Closure::<dyn FnMut(_)>::new(move |event: wgpu::web_sys::Event| {
             use web_sys::KeyboardEvent;
 
             if let Some(kev) = event.dyn_ref::<KeyboardEvent>() {
-                let _ = p.send_event(UserEvent::Custom(WasmEvent::KeyboardButton {
+                let _ = key_proxy.send_event(UserEvent::Custom(WasmEvent::KeyboardButton {
                     keypress: kev.key(),
                 }));
             }
-            // else: it's some other kind of Event, ignore it
         });
 
         window
-            .add_event_listener_with_callback("keypress", closure.as_ref().unchecked_ref())
+            .add_event_listener_with_callback("keypress", key_closure.as_ref().unchecked_ref())
             .unwrap();
 
-        closure.forget();
-    }
-    #[cfg(not(target_arch = "wasm32"))]
-    fn on_resumed(&mut self) {
-        println!("Dank")
+        key_closure.forget();
     }
 
-    fn on_device_event(&mut self, event: DeviceEvent, proxy: &mut State<MyLoop>) {
-        if let DeviceEvent::MouseMotion { delta } = event {
-            proxy.game_loop.as_mut().unwrap().cursor_delta = delta;
+    #[cfg(not(target_arch = "wasm32"))]
+    fn on_resumed(&mut self) {
+        println!("Native resumed");
+    }
+
+    fn on_device_event(&mut self, event: DeviceEvent, _state: &mut State) {
+        // ✅ Correct: DO NOT touch game_loop through State
+        // Let the engine forward input to GameLoop::process_event instead
+        match event {
+            DeviceEvent::MouseMotion { delta } => {
+                log::debug!("Mouse delta: {:?}", delta);
+            }
+            _ => {}
         }
     }
 }

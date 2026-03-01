@@ -1,6 +1,6 @@
 use sparmos_engine::{
     cgmath::Vector2,
-    entity::entity::{PrimitiveMesh, PrimitiveVertex},
+    entity::core::geometry::{Primitive, PrimitiveVertex},
 };
 
 pub enum InputType {
@@ -201,7 +201,7 @@ pub fn double_sided_mobius_strip(
     width: f32,
     num_grid_length: usize,
     num_grid_width: usize,
-) -> PrimitiveMesh {
+) -> Primitive {
     let (mut mobius_mesh, offset) =
         mobius_strip(radius, width, num_grid_length, num_grid_width, false, 0);
     let (mobius_mesh2, _) =
@@ -218,7 +218,7 @@ pub fn mobius_strip(
     num_grid_width: usize,
     reversed: bool,
     index_offset: u32,
-) -> (PrimitiveMesh, u32) {
+) -> (Primitive, u32) {
     let mut all_vertices = Vec::new();
     let mut all_indices = Vec::new();
 
@@ -333,7 +333,7 @@ pub fn mobius_strip(
             // Store one PrimitiveFace (shared vertices + indices)
         }
     }
-    let mesh = PrimitiveMesh {
+    let mesh = Primitive {
         vertices: all_vertices,
         indices: all_indices,
     };
