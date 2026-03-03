@@ -7,12 +7,19 @@ struct CameraUniform {
 @group(0) @binding(0)
 var<uniform> camera: CameraUniform;
 
+
 struct Light {
-    position: vec3<f32>,
-    color: vec3<f32>,
-}
+    position: vec3<f32>, // xyz + padding
+    color: vec3<f32>,  // rgb + padding
+};
+
+struct LightBlock {
+    lights: array<Light, 16>,
+    light_count: u32,
+};
+
 @group(1) @binding(0)
-var<uniform> light: Light;
+var<uniform> u_lights: LightBlock;
 
 struct VertexInput {
     @location(0) position: vec3<f32>,
@@ -63,24 +70,37 @@ fn vs_main(
     return out;
 }
 
-// Fragment shader
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-let ambient_strength = 0.1;
-    let ambient_color = light.color * ambient_strength;
+    let ambient_strength = 0.1;
+    let shininess = 32.0;
 
-    let light_dir = normalize(light.position - in.world_position);
-    let view_dir = normalize(camera.view_pos.xyz - in.world_position);
-    let half_dir = normalize(view_dir + light_dir);
+    var result: vec3<f32> = vec3<f32>(0.0);
 
-    let diffuse_strength = max(dot(in.world_normal, light_dir), 0.0);
-    let diffuse_color = light.color * diffuse_strength;
+    let N = normalize(in.world_normal);
+    let V = normalize(camera.view_pos.xyz - in.world_position);
 
-    let specular_strength = pow(max(dot(in.world_normal, half_dir), 0.0), 32.0);
-    let specular_color = specular_strength * light.color;
+    for (var i: u32 = 0u; i < u_lights.light_count; i = i + 1u) {
+        let light = u_lights.lights[i];
 
-    let result = (ambient_color + diffuse_color + specular_color) * in.color;
+        let L = normalize(light.position.xyz - in.world_position);
+        let H = normalize(V + L);
 
-    
+        // Ambient
+        let ambient = light.color.xyz * ambient_strength;
+
+        // Diffuse
+        let diff = max(dot(N, L), 0.0);
+        let diffuse = diff * light.color.xyz;
+
+        // Specular (Blinn–Phong)
+        let spec = pow(max(dot(N, H), 0.0), shininess);
+        let specular = spec * light.color.xyz;
+
+        result += ambient + diffuse + specular;
+    }
+
+    result *= in.color;
+
     return vec4<f32>(result, 1.0);
 }

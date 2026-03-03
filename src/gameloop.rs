@@ -2,17 +2,20 @@ use std::sync::Arc;
 
 use sparmos_engine::{
     application::state::{Core, DeviceBackend, Game, State, map_value},
-    cgmath::*,
+    cgmath::{self, *},
     egui::{self, Color32, Rect, Response, Sense, Ui, Vec2},
     entity::{
         core::{
+            buffer::Color,
             instance::{Instance, InstanceController, InstanceRaw},
             material::MaterialBuilder,
             render::{DrawMesh, GlobalRenderContext, RenderObject, Scene},
             resource::GpuBindable,
-            storage_buffer::Color,
         },
-        systems::camera::{Camera, CameraSystem},
+        systems::{
+            camera::{Camera, CameraSystem},
+            light::{self, Light, LightSystem},
+        },
     },
     log, web_time,
     wgpu::{self, SurfaceConfiguration},
@@ -404,19 +407,35 @@ impl Game for MobiusVisualizer {
         let camera_system =
             CameraSystem::new(75.0, 50.0, &state.core.render_context.device, &camera);
         //registers system and creates bind_group
+
+        let light = Light {
+            position: cgmath::vec3(100.0, 100.0, 1.0),
+            color: cgmath::vec3(1.0, 0.0, 0.0),
+        };
+
+        let light2 = Light {
+            position: cgmath::vec3(-100.0, -100.0, 1.0),
+            color: cgmath::vec3(0.0, 1.0, 0.0),
+        };
+        let light_system = LightSystem::init(
+            &vec![light.clone(), light2.clone()],
+            &state.core.render_context.device,
+        );
         let engine = &mut state.core.engine;
         engine.add_entity((camera,));
         engine.add_system(camera_system, &state.core.render_context.device);
 
-        // let primitive_shader =
-        //     state
-        //         .core
-        //         .render_context
-        //         .device
-        //         .create_shader_module(wgpu::ShaderModuleDescriptor {
-        //             label: Some("PrimitiveShader"),
-        //             source: wgpu::ShaderSource::Wgsl(include_str!("shaders/primitive.wgsl").into()),
-        //         });
+        engine.add_entity((light,));
+        engine.add_system(light_system, &state.core.render_context.device);
+        let primitive_shader =
+            state
+                .core
+                .render_context
+                .device
+                .create_shader_module(wgpu::ShaderModuleDescriptor {
+                    label: Some("PrimitiveShader"),
+                    source: wgpu::ShaderSource::Wgsl(include_str!("shaders/primitive.wgsl").into()),
+                });
         // let mobius_shader =
         //     state
         //         .core
@@ -426,44 +445,12 @@ impl Game for MobiusVisualizer {
         //             label: Some("PrimitiveShader"),
         //             source: wgpu::ShaderSource::Wgsl(include_str!("shaders/mobius.wgsl").into()),
         //         });
-        let test =
-            state
-                .core
-                .render_context
-                .device
-                .create_shader_module(wgpu::ShaderModuleDescriptor {
-                    label: Some("PrimitiveShader"),
-                    source: wgpu::ShaderSource::Wgsl(
-                        include_str!("shaders/primitive2.wgsl").into(),
-                    ),
-                });
 
         state
             .core
             .render_context
             .shaders
-            .insert("mobius".to_string(), test);
-        // let light_position = Vector3::new(-60.0, 20.0, 60.0);
-        // let light_source = Light::new(
-        //     light_position,
-        //     Vector3::new(1.0, 1.0, 1.0),
-        //     &state.render_context.device,
-        // );
-        //
-        // let light_mesh = make_cube_primitive();
-        //
-        // let light_renderable = Renderable {
-        //     mesh: light_mesh,
-        //     ic: InstanceController::new(vec![light_source.get_instance()]),
-        // };
-        //
-        // let light_render = state.render_context.create_renderable_controller(
-        //     vec![light_renderable],
-        //     &light_source,
-        //     &camera_controller,
-        //     &primitive_shader,
-        //     None,
-        // );
+            .insert("mobius".to_string(), primitive_shader);
 
         let radius = 2.0; // R: radius of the center circle
         let width = 2.0; // w: half-width of the strip
@@ -496,6 +483,7 @@ impl Game for MobiusVisualizer {
 
         let material = MaterialBuilder::new()
             .add_layout("camera", engine.resources.get_resource::<CameraSystem>())
+            .add_layout("light", engine.resources.get_resource::<LightSystem>())
             .add_shader("mobius")
             .build(&mesh, &state.core.render_context, &ic);
         // let mut instance_controller = state.render_context.create_renderable_controller(
