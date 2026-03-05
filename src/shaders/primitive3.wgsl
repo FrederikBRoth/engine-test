@@ -84,8 +84,30 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let ambient_strength = 0.1;
     let shininess = 32.0;
 
-    var result: vec3<f32> = vec3<f32>(1.0);
+    var result: vec3<f32> = vec3<f32>(0.0);
 
+    let N = normalize(in.world_normal);
+    let V = normalize(camera.view_pos.xyz - in.world_position);
+
+    for (var i: u32 = 0u; i < u_lights.light_count; i = i + 1u) {
+        let light = u_lights.lights[i];
+
+        let L = normalize(light.position.xyz - in.world_position);
+        let H = normalize(V + L);
+
+        // Ambient
+        let ambient = light.color.xyz * ambient_strength;
+
+        // Diffuse
+        let diff = max(dot(N, L), 0.0);
+        let diffuse = diff * light.color.xyz;
+
+        // Specular (Blinn–Phong)
+        let spec = pow(max(dot(N, H), 0.0), shininess);
+        let specular = spec * light.color.xyz;
+
+        result += ambient + diffuse + specular;
+    }
     let grid_width : u32 = 100u - 1u;
     let grid_height : u32 = 600u * 2u;
 
@@ -102,11 +124,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let alive = textureSample(life_tex, life_sampler, uv).r;
 
 
-
     result *= select(
-        vec3<f32>(0.1),
+        vec3<f32>(0.05),
         vec3<f32>(1.0),
-        alive < 0.5
+        alive > 0.5
     );
 
     return vec4<f32>(result, 1.0);

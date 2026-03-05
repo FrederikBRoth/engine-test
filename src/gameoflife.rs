@@ -1,6 +1,9 @@
+use std::ptr::read;
+
 use sparmos_engine::{
     cgmath::Vector2,
     entity::core::geometry::{Primitive, PrimitiveVertex},
+    wgpu,
 };
 
 pub enum InputType {
@@ -108,6 +111,10 @@ impl Life {
         }
     }
 
+    pub fn convert_copy_01_to_0255(&mut self) -> Vec<u8> {
+        self.game_area.iter().map(|&v| v * 255).collect()
+    }
+
     pub fn toggle(&mut self) {
         self.enabled = !self.enabled;
     }
@@ -134,6 +141,27 @@ impl Life {
                 *data,
             );
         }
+    }
+
+    pub fn upload_to_texture(&mut self, queue: &wgpu::Queue, texture: &wgpu::Texture) {
+        let readable = self.convert_copy_01_to_0255();
+
+        let size = wgpu::Extent3d {
+            width: self.width as u32,
+            height: self.height as u32,
+            depth_or_array_layers: 1,
+        };
+
+        queue.write_texture(
+            texture.as_image_copy(),
+            &readable,
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(self.width as u32),
+                rows_per_image: Some(self.height as u32),
+            },
+            size,
+        );
     }
 }
 

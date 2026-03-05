@@ -6,17 +6,21 @@ use sparmos_engine::{
     egui::{self, Color32, Rect, Response, Sense, Ui, Vec2},
     entity::{
         core::{
-            buffer::Color,
+            buffer::{Buffer, Color},
+            geometry::Primitive,
             instance::{Instance, InstanceController, InstanceRaw},
             material::MaterialBuilder,
-            render::{DrawMesh, GlobalRenderContext, RenderObject, Scene},
+            render::{DrawMesh, GpuObjects, RenderContext, Renderable},
             resource::GpuBindable,
         },
+        entities::cube,
         systems::{
-            camera::{Camera, CameraSystem},
-            light::{self, Light, LightSystem},
+            camera::{Camera, CameraSystem, CameraUniform},
+            light::{self, Light, LightBlock, LightSystem},
         },
+        texture::Texture,
     },
+    helpers::line_trace::line_trace_square,
     log, web_time,
     wgpu::{self, SurfaceConfiguration},
     winit::{
@@ -33,7 +37,6 @@ pub struct MobiusVisualizer {
     pub score: u32,
     pub counter: usize,
     pub life: Life,
-    pub scene: Scene,
     pub cursor_pos: PhysicalPosition<f32>,
     pub cursor_delta: (f64, f64),
     pub gui_state: GuiState,
@@ -80,7 +83,6 @@ impl Default for MobiusVisualizer {
     fn default() -> Self {
         Self {
             score: 0,
-            scene: Scene::new(),
             counter: 0,
             life: Life::new(vec![], 0, 0, 4.0),
             cursor_pos: PhysicalPosition { x: 0.0, y: 0.0 },
@@ -98,7 +100,7 @@ impl Game for MobiusVisualizer {
         backend: &DeviceBackend,
         core: &mut Core,
     ) {
-        render.draw_scene(backend, &self.scene, &core.engine);
+        // render.draw_scene(backend, &self.scene, &core.engine);
     }
 
     fn update(&mut self, dt: std::time::Duration, core: &mut Core) {
@@ -109,44 +111,22 @@ impl Game for MobiusVisualizer {
         let camera_system = core.engine.resources.get_resource_mut::<CameraSystem>();
         camera_system.update_camera(dt, &core.render_context, camera);
 
-        self.life.calculate_iteration(dt);
+        // self.life.calculate_iteration(dt);
 
-        for scene in self.scene.objects.iter_mut() {
-            scene.instance_controller.update(&core.render_context.queue);
+        for (_, material) in core.render_context.gpu_objects.materials.iter_mut() {
+            if let Some(texture) = material.texture.as_mut() {
+                self.life
+                    .upload_to_texture(&core.render_context.queue, &texture.texture);
+            }
         }
-        // if let Some(render) = self.instance_controllers.first_mut() {
-        //     for (i, render_infos) in render.render_mesh_information.iter_mut().enumerate() {
-        //         let end = (render_infos.num_vertices - render_infos.vertex_offset) / 4;
-        //
-        //         for i in 0..end as usize {
-        //             if self.life.game_area[i] == 1 {
-        //                 if let Some(storage) = render.storage_buffer.as_mut() {
-        //                     storage.instances.get_mut(i).unwrap().color = [1.0, 0.0, 0.0];
-        //                 }
-        //             } else {
-        //                 let color = if self.life.enabled {
-        //                     Vector3 {
-        //                         x: 1.0,
-        //                         y: 1.0,
-        //                         z: 1.0,
-        //                     }
-        //                 } else {
-        //                     Vector3 {
-        //                         x: 0.4,
-        //                         y: 0.4,
-        //                         z: 0.4,
-        //                     }
-        //                 };
-        //                 if let Some(storage) = render.storage_buffer.as_mut() {
-        //                     storage.instances.get_mut(i).unwrap().color = color.into();
-        //                 }
-        //             }
-        //         }
-        //     }
-        // }
-        // for render in self.instance_controllers.iter_mut() {
-        //     render.update_all(&rc.queue);
-        // }
+        for render in core
+            .render_context
+            .gpu_objects
+            .instance_controllers
+            .iter_mut()
+        {
+            render.1.update(&core.render_context.queue);
+        }
     }
 
     fn process_event(
@@ -245,25 +225,16 @@ impl Game for MobiusVisualizer {
                                 screen.width as f32,
                                 screen.height as f32,
                             );
-                            // if let Some(controller) = self.instance_controllers.get_mut(0) {
-                            //     for (i, render_infos) in
-                            //         controller.render_mesh_information.iter_mut().enumerate()
-                            //     {
-                            //         let bounds = Vector2 {
-                            //             x: render_infos.vertex_offset,
-                            //             y: render_infos.vertex_offset + render_infos.num_vertices,
-                            //         };
-                            //
-                            //         if let Some(i) = line_trace_square(
-                            //             &controller.vertices,
-                            //             bounds,
-                            //             click_ray,
-                            //             None,
-                            //         ) {
-                            //             self.life.game_area[i] = 1;
-                            //         }
-                            //     }
-                            // }
+                            let mut query = core.engine.world.query::<(&Renderable, &Primitive)>();
+                            println!("{}", query.iter().len());
+                            let (renderable, primitive) =
+                                query.iter().next().expect("No camera found");
+
+                            if let Some(i) = line_trace_square(&primitive.vertices, click_ray, None)
+                            {
+                                self.life.game_area[i as usize] = 1;
+                                println!("{}", i);
+                            }
 
                             self.life.toggle_input(None);
                             self.life.prev_drawed_elem = None;
@@ -279,6 +250,7 @@ impl Game for MobiusVisualizer {
                                 screen.width as f32,
                                 screen.height as f32,
                             );
+
                             // if let Some(controller) = self.instance_controllers.get_mut(0) {
                             //     for (i, render_infos) in
                             //         controller.render_mesh_information.iter_mut().enumerate()
@@ -298,8 +270,8 @@ impl Game for MobiusVisualizer {
                             //         }
                             //     }
                             // }
-                            self.life.toggle_input(None);
-                            self.life.prev_drawed_elem = None;
+                            // self.life.toggle_input(None);
+                            // self.life.prev_drawed_elem = None;
                         }
                     },
 
@@ -418,14 +390,12 @@ impl Game for MobiusVisualizer {
             color: cgmath::vec3(0.0, 1.0, 0.0),
         };
         let light_system = LightSystem::init(
-            &vec![light.clone(), light2.clone()],
+            &[light.clone(), light2.clone()],
             &state.core.render_context.device,
         );
         let engine = &mut state.core.engine;
         engine.add_entity((camera,));
         engine.add_system(camera_system, &state.core.render_context.device);
-
-        engine.add_entity((light,));
         engine.add_system(light_system, &state.core.render_context.device);
         let primitive_shader =
             state
@@ -460,15 +430,23 @@ impl Game for MobiusVisualizer {
         let start = web_time::Instant::now();
         let mobius_mesh = double_sided_mobius_strip(radius, width, segments_u, segments_v);
 
+        let ids = mobius_mesh.vertices.len() % 4;
+        let grid_width = (segments_v - 1) as u32;
+        let grid_height = (segments_u * 2) as u32;
+
+        let life_texture = Texture::create_life_texture(
+            &state.core.render_context.device,
+            &state.core.render_context.queue,
+            grid_width,
+            grid_height,
+            "GameOfLifeTexture",
+        );
         let mut mobius_instance_list = vec![];
 
-        for _ in 0..(mobius_mesh.vertices.len() / 4) {
-            mobius_instance_list.push(Color {
-                color: [0.0, 1.0, 1.0],
-                _pad: 0.0,
-            });
-        }
-
+        mobius_instance_list.push(Color {
+            color: [0.0, 1.0, 1.0],
+            _pad: 0.0,
+        });
         let mesh = mobius_mesh.make_mb(&state.core.render_context.device);
 
         let ic = InstanceController::new::<InstanceRaw>(
@@ -484,8 +462,14 @@ impl Game for MobiusVisualizer {
         let material = MaterialBuilder::new()
             .add_layout("camera", engine.resources.get_resource::<CameraSystem>())
             .add_layout("light", engine.resources.get_resource::<LightSystem>())
+            .add_texture(life_texture)
             .add_shader("mobius")
-            .build(&mesh, &state.core.render_context, &ic);
+            .build(
+                &mesh.buffer_layout,
+                &state.core.render_context,
+                &ic.buffer_layout,
+            );
+
         // let mut instance_controller = state.render_context.create_renderable_controller(
         //     vec![mobius_renderable],
         //     &light_source,
@@ -495,18 +479,43 @@ impl Game for MobiusVisualizer {
         // );
         //
 
-        let render = RenderObject {
-            mesh,
-            instance_controller: ic,
-            material,
+        //TODO: need to seperate RenderObject into graphical elements and actual entities that can
+        //change throughout the application.
+        let cube_mesh = cube::new().make_mb(&state.core.render_context.device);
+        let light_ic = InstanceController::new::<InstanceRaw>(
+            vec![
+                Instance::new([100.0, 100.0, 1.0].into(), 1.0),
+                Instance::new([-100.0, -100.0, 1.0].into(), 1.0),
+            ],
+            &state.core.render_context.device,
+        );
+
+        //Should group renderList by material, so that we dont do many pipeline shifts
+
+        let gpu_objects = &mut state.core.render_context.gpu_objects;
+
+        // engine.add_entity((render, light_render));
+        let mobius_ic = gpu_objects.insert_ic(ic);
+        let light_ic = gpu_objects.instance_controllers.insert(light_ic);
+
+        let material = gpu_objects.materials.insert(material);
+
+        let mobius_mesh_handle = gpu_objects.meshes.insert(mesh);
+
+        let mobius_entity = Renderable {
+            material_handle: material,
+            mesh_handle: mobius_mesh_handle,
+            instance_controller_handle: mobius_ic,
         };
 
-        self.scene.objects.push(render);
+        engine.add_entity((mobius_entity, mobius_mesh));
+
         let mut game_state = vec![0; (segments_v - 1) * (segments_u * 2)];
 
         game_state[30] = 1;
         game_state[31] = 1;
         game_state[32] = 1;
+        game_state[33] = 1;
 
         self.life = Life::new(
             game_state,

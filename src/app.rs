@@ -76,8 +76,6 @@ impl AppLifecycle<WasmEvent> for MyGame {
     }
 
     fn on_device_event(&mut self, event: DeviceEvent, _state: &mut State) {
-        // ✅ Correct: DO NOT touch game_loop through State
-        // Let the engine forward input to GameLoop::process_event instead
         match event {
             DeviceEvent::MouseMotion { delta } => {
                 log::debug!("Mouse delta: {:?}", delta);
