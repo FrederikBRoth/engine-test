@@ -7,26 +7,38 @@ struct CameraUniform {
 @group(0) @binding(0)
 var<uniform> camera: CameraUniform;
 
-struct Light {
-    position: vec3<f32>,
-    color: vec3<f32>,
-}
-@group(1) @binding(0)
-var<uniform> light: Light;
 
-struct Color {
-    color: vec3<f32>,
-    _pad: f32,
+struct Light {
+    position: vec3<f32>, // xyz + padding
+    color: vec3<f32>,  // rgb + padding
 };
+
+struct LightBlock {
+    lights: array<Light, 16>,
+    light_count: u32,
+};
+
+@group(1) @binding(0)
+var<uniform> u_lights: LightBlock;
+
 @group(2) @binding(0)
-var<storage, read> quad_colors: array<Color>;
+var life_tex: texture_2d<f32>;
+
+@group(2) @binding(1)
+var life_sampler: sampler;
+
+struct MobiusSize {
+    width: u32,
+    height: u32,
+};
+@group(3) @binding(0)
+var<uniform> size: MobiusSize;
 
 struct VertexInput {
     @location(0) position: vec3<f32>,
     @location(1) color: vec3<f32>,
     @location(2) normal: vec3<f32>,
     @location(3) quad_id: u32,
-
 }
 struct InstanceInput {
     @location(5) model_matrix_0: vec4<f32>,
@@ -44,6 +56,7 @@ struct VertexOutput {
     @location(0) color: vec3<f32>,
     @location(1)  world_normal: vec3<f32>,
     @location(2) world_position: vec3<f32>,
+    @location(3) @interpolate(flat) quad_id: u32,
 }
 
 @vertex
@@ -63,34 +76,69 @@ fn vs_main(
         instance.normal_matrix_2,
     );
     var out: VertexOutput;
-    // out.color = vec3<f32>(instance.instance_color.x, instance.instance_color.y, instance.instance_color.z);
-    out.color = quad_colors[model.quad_id].color;
+    out.color = vec3<f32>(instance.instance_color.x, instance.instance_color.y, instance.instance_color.z);
     out.world_normal = normalize(normal_matrix * model.normal); 
 
     var world_position: vec4<f32> = model_matrix * vec4<f32>(model.position, 1.0);
     out.world_position = world_position.xyz;
     out.clip_position = camera.view_proj * world_position;
+    out.quad_id = model.quad_id;
     return out;
 }
 
-// Fragment shader
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-let ambient_strength = 0.1;
-    let ambient_color = light.color * ambient_strength;
+    let ambient_strength = 0.1;
+    let shininess = 32.0;
 
-    let light_dir = normalize(light.position - in.world_position);
-    let view_dir = normalize(camera.view_pos.xyz - in.world_position);
-    let half_dir = normalize(view_dir + light_dir);
 
-    let diffuse_strength = max(dot(in.world_normal, light_dir), 0.0);
-    let diffuse_color = light.color * diffuse_strength;
+    var result: vec3<f32> = vec3<f32>(0.0);
 
-    let specular_strength = pow(max(dot(in.world_normal, half_dir), 0.0), 32.0);
-    let specular_color = specular_strength * light.color;
+    let N = normalize(in.world_normal);
+    let V = normalize(camera.view_pos.xyz - in.world_position);
 
-    let result = (ambient_color + diffuse_color + specular_color) * in.color;
+    for (var i: u32 = 0u; i < u_lights.light_count; i = i + 1u) {
+        let light = u_lights.lights[i];
 
-    
+        let L = normalize(light.position.xyz - in.world_position);
+        let H = normalize(V + L);
+
+        // Ambient
+        let ambient = light.color.xyz * ambient_strength;
+
+        // Diffuse
+        let diff = max(dot(N, L), 0.0);
+        let diffuse = diff * light.color.xyz;
+
+        // Specular (Blinn–Phong)
+        let spec = pow(max(dot(N, H), 0.0), shininess);
+        let specular = spec * light.color.xyz;
+
+        result += ambient + diffuse + specular;
+    }
+
+    let grid_width : u32 = size.width;
+    let grid_height : u32 = size.height;
+
+    let quad_id = in.quad_id;
+
+    let x = quad_id % grid_width;
+    let y = quad_id / grid_width;
+
+    let uv = vec2<f32>(
+        (f32(x) + 0.5) / f32(grid_width),
+        (f32(y) + 0.5) / f32(grid_height)
+    );
+
+    let alive = textureSample(life_tex, life_sampler, uv).r;
+
+
+
+    result *= select(
+        vec3<f32>(0.1),
+        vec3<f32>(1.0),
+        alive < 0.5
+    );
+
     return vec4<f32>(result, 1.0);
 }

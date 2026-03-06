@@ -1,4 +1,4 @@
-use std::ptr::read;
+use std::{collections::HashSet, ptr::read};
 
 use sparmos_engine::{
     cgmath::Vector2,
@@ -173,6 +173,13 @@ pub struct Lifeform {
     pub height: u32,
 }
 
+#[repr(C)]
+#[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct MobiusSize {
+    pub width: u32,
+    pub height: u32,
+}
+
 impl Lifeform {
     pub fn new(name: String, width: u32, height: u32) -> Self {
         Self {
@@ -223,7 +230,6 @@ pub fn get_neighbor_indices(index: usize, width: i32, height: i32, radius: i32) 
 
     neighbors
 }
-
 pub fn double_sided_mobius_strip(
     radius: f32,
     width: f32,
