@@ -95,22 +95,12 @@ impl Default for MobiusVisualizer {
 }
 
 impl Game for MobiusVisualizer {
-    fn render(
-        &mut self,
-        render: &mut wgpu::RenderPass,
-        texture_view: &wgpu::TextureView,
-        backend: &DeviceBackend,
-        core: &mut Core,
-    ) {
-        // render.draw_scene(backend, &self.scene, &core.engine);
-    }
-
     fn update(&mut self, dt: std::time::Duration, core: &mut Core) {
         // let mut camera_system = self.world.query::<&mut CameraSystem>();
         // let camera_system = camera_system.iter().next().unwrap();
         let mut query = core.engine.world.query::<&mut Camera>();
         let camera = query.iter().next().expect("No camera found");
-        let camera_system = core.engine.resources.get_resource_mut::<CameraSystem>();
+        let camera_system = core.engine.resources.get_system_mut::<CameraSystem>();
         camera_system.update_camera(dt, &core.render_context, camera);
 
         self.life.calculate_iteration(dt);
@@ -142,7 +132,7 @@ impl Game for MobiusVisualizer {
         // let (entity, camera) = state
         let mut query = core.engine.world.query::<&mut Camera>();
         let camera = query.iter().next().expect("No camera found");
-        let camera_system = core.engine.resources.get_resource_mut::<CameraSystem>();
+        let camera_system = core.engine.resources.get_system_mut::<CameraSystem>();
         match event {
             WindowEvent::KeyboardInput {
                 event:
@@ -221,8 +211,6 @@ impl Game for MobiusVisualizer {
                     winit::event::MouseButton::Left => match state {
                         ElementState::Pressed => self.life.toggle_input(Some(InputType::Insert)),
                         ElementState::Released => {
-                            println!("Pressed button!");
-
                             let click_ray = camera.screen_to_world_ray(
                                 self.cursor_pos.x,
                                 self.cursor_pos.y,
@@ -239,7 +227,6 @@ impl Game for MobiusVisualizer {
                             {
                                 self.life.game_area[hit as usize] = 1;
                             }
-                            println!("Find one {:?}", start.elapsed().as_micros());
 
                             self.life.toggle_input(None);
                             self.life.prev_drawed_elem = None;
@@ -415,7 +402,6 @@ impl Game for MobiusVisualizer {
         let mobius_mesh = double_sided_mobius_strip(radius, width, segments_u, segments_v);
 
         // let mobius_mesh = cube::new();
-        let ids = mobius_mesh.vertices.len() % 4;
         let grid_width = (segments_v - 1) as u32;
         let grid_height = (segments_u * 2) as u32;
 
@@ -447,8 +433,8 @@ impl Game for MobiusVisualizer {
             &BufferType::UniformBuffer,
         );
         let material = MaterialBuilder::new()
-            .add_layout("camera", engine.resources.get_resource::<CameraSystem>())
-            .add_layout("light", engine.resources.get_resource::<LightSystem>())
+            .add_layout("camera", engine.resources.get_system::<CameraSystem>())
+            .add_layout("light", engine.resources.get_system::<LightSystem>())
             .add_texture(life_texture)
             .add_shader("mobius")
             .add_buffer(0, mobius_size_buffer)
@@ -458,17 +444,6 @@ impl Game for MobiusVisualizer {
                 &ic.buffer_layout,
             );
 
-        // let mut instance_controller = state.render_context.create_renderable_controller(
-        //     vec![mobius_renderable],
-        //     &light_source,
-        //     &camera_controller,
-        //     &mobius_shader,
-        //     Some(mobius_storage),
-        // );
-        //
-
-        //TODO: need to seperate RenderObject into graphical elements and actual entities that can
-        //change throughout the application.
         let cube_mesh = cube::new().make_mb(&state.core.render_context.device);
         let light_ic = InstanceController::new::<InstanceRaw>(
             vec![
@@ -478,8 +453,8 @@ impl Game for MobiusVisualizer {
             &state.core.render_context.device,
         );
         let light_mat = MaterialBuilder::new()
-            .add_layout("camera", engine.resources.get_resource::<CameraSystem>())
-            .add_layout("light", engine.resources.get_resource::<LightSystem>())
+            .add_layout("camera", engine.resources.get_system::<CameraSystem>())
+            .add_layout("light", engine.resources.get_system::<LightSystem>())
             .add_shader("lights")
             .build(
                 &cube_mesh.buffer_layout,
@@ -514,12 +489,7 @@ impl Game for MobiusVisualizer {
         engine.add_entity((light_entity, markers::Light));
         engine.add_entity((mobius_entity, mobius_mesh, markers::Mobius));
 
-        let mut game_state = vec![0; (segments_v - 1) * (segments_u * 2)];
-
-        game_state[30] = 1;
-        game_state[31] = 1;
-        game_state[32] = 1;
-        game_state[33] = 1;
+        let game_state = vec![0; (segments_v - 1) * (segments_u * 2)];
 
         self.life = Life::new(
             game_state,
@@ -535,7 +505,7 @@ impl Game for MobiusVisualizer {
 
         let mut query = core.engine.world.query::<&mut Camera>();
         let camera = query.iter().next().expect("No camera found");
-        let camera_system = core.engine.resources.get_resource_mut::<CameraSystem>();
+        let camera_system = core.engine.resources.get_system_mut::<CameraSystem>();
 
         camera.aspect =
             core.render_context.config.width as f32 / core.render_context.config.height as f32;
