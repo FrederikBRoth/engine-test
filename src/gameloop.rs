@@ -369,7 +369,7 @@ impl Game for MobiusVisualizer {
                 .render_context
                 .device
                 .create_shader_module(wgpu::ShaderModuleDescriptor {
-                    label: Some("PrimitiveShader"),
+                    label: Some("lights"),
                     source: wgpu::ShaderSource::Wgsl(include_str!("shaders/lights.wgsl").into()),
                 });
         let mobius_shader =
@@ -378,7 +378,7 @@ impl Game for MobiusVisualizer {
                 .render_context
                 .device
                 .create_shader_module(wgpu::ShaderModuleDescriptor {
-                    label: Some("PrimitiveShader"),
+                    label: Some("mobius"),
                     source: wgpu::ShaderSource::Wgsl(include_str!("shaders/mobius.wgsl").into()),
                 });
 
@@ -414,7 +414,7 @@ impl Game for MobiusVisualizer {
         );
         let mesh = mobius_mesh.make_mb(&state.core.render_context.device);
 
-        let ic = InstanceController::new::<InstanceRaw>(
+        let ic = InstanceController::<InstanceRaw>::new(
             vec![Instance::default()],
             &state.core.render_context.device,
         );
@@ -445,7 +445,7 @@ impl Game for MobiusVisualizer {
             );
 
         let cube_mesh = cube::new().make_mb(&state.core.render_context.device);
-        let light_ic = InstanceController::new::<InstanceRaw>(
+        let light_ic = InstanceController::<InstanceRaw>::new(
             vec![
                 Instance::new([100.0, 100.0, 1.0].into(), 1.0),
                 Instance::new([-100.0, -100.0, 1.0].into(), 1.0),
@@ -466,7 +466,7 @@ impl Game for MobiusVisualizer {
 
         let gpu_objects = &mut state.core.render_context.gpu_objects;
 
-        let light_ic = gpu_objects.instance_controllers.insert(light_ic);
+        let light_ic = gpu_objects.instance_controllers.insert(Box::new(light_ic));
 
         let light_mesh = gpu_objects.meshes.insert(cube_mesh);
         let light_mat = gpu_objects.materials.insert(light_mat);
@@ -476,7 +476,7 @@ impl Game for MobiusVisualizer {
             instance_controller_handle: light_ic,
             mesh_handle: light_mesh,
         };
-        let mobius_ic = gpu_objects.instance_controllers.insert(ic);
+        let mobius_ic = gpu_objects.instance_controllers.insert(Box::new(ic));
         let mobius_mat = gpu_objects.materials.insert(material);
         let mobius_mesh_handle = gpu_objects.meshes.insert(mesh);
 
