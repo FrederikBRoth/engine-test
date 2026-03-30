@@ -1,10 +1,11 @@
 use sparmos_engine::{
-    application::state::{Core, DeviceBackend, Game, State, map_value},
+    application::state::{DeviceBackend, Game, State, map_value},
     cgmath::{self, *},
     egui::{self, Color32, Rect, Response, Sense, Ui, Vec2},
     entity::{
         core::{
             buffer::{Buffer, BufferType},
+            engine::Engine,
             geometry::Primitive,
             instance::{Instance, InstanceController, InstanceRaw},
             material::MaterialBuilder,
@@ -95,29 +96,29 @@ impl Default for MobiusVisualizer {
 }
 
 impl Game for MobiusVisualizer {
-    fn update(&mut self, dt: std::time::Duration, core: &mut Core) {
+    fn update(&mut self, dt: std::time::Duration, engine: &mut Engine) {
         // let mut camera_system = self.world.query::<&mut CameraSystem>();
         // let camera_system = camera_system.iter().next().unwrap();
-        let mut query = core.engine.world.query::<&mut Camera>();
+        let mut query = engine.world.query::<&mut Camera>();
         let camera = query.iter().next().expect("No camera found");
-        let camera_system = core.engine.resources.get_system_mut::<CameraSystem>();
-        camera_system.update_camera(dt, &core.render_context, camera);
+        let camera_system = engine.resources.get_system_mut::<CameraSystem>();
+        camera_system.update_camera(dt, &engine.render_context, camera);
 
         self.life.calculate_iteration(dt);
 
-        for (_, material) in core.render_context.gpu_objects.materials.iter_mut() {
+        for (_, material) in engine.render_context.gpu_objects.materials.iter_mut() {
             if let Some(texture) = material.texture.as_mut() {
                 self.life
-                    .upload_to_texture(&core.render_context.queue, &texture.texture);
+                    .upload_to_texture(&engine.render_context.queue, &texture.texture);
             }
         }
-        for render in core
+        for render in engine
             .render_context
             .gpu_objects
             .instance_controllers
             .iter_mut()
         {
-            render.1.update(&core.render_context.queue);
+            render.1.update(&engine.render_context.queue);
         }
     }
 
@@ -125,14 +126,14 @@ impl Game for MobiusVisualizer {
         &mut self,
         event: &winit::event::WindowEvent,
         screen: &winit::dpi::PhysicalSize<u32>,
-        core: &mut Core,
+        engine: &mut Engine,
     ) {
         // let mut camera_system = self.world.query::<&mut CameraSystem>();
         // let camera_system = camera_system.iter().next().unwrap();
         // let (entity, camera) = state
-        let mut query = core.engine.world.query::<&mut Camera>();
+        let mut query = engine.world.query::<&mut Camera>();
         let camera = query.iter().next().expect("No camera found");
-        let camera_system = core.engine.resources.get_system_mut::<CameraSystem>();
+        let camera_system = engine.resources.get_system_mut::<CameraSystem>();
         match event {
             WindowEvent::KeyboardInput {
                 event:
@@ -217,7 +218,7 @@ impl Game for MobiusVisualizer {
                                 screen.width as f32,
                                 screen.height as f32,
                             );
-                            let mut query = core.engine.world.query::<(&Renderable, &Primitive)>();
+                            let mut query = engine.world.query::<(&Renderable, &Primitive)>();
                             let (renderable, primitive) =
                                 query.iter().next().expect("No camera found");
 
@@ -278,7 +279,7 @@ impl Game for MobiusVisualizer {
             WindowEvent::CursorMoved { position, .. } => {
                 self.cursor_pos = PhysicalPosition::new(position.x as f32, position.y as f32);
 
-                let mut query = core.engine.world.query::<(&Renderable, &Primitive)>();
+                let mut query = engine.world.query::<(&Renderable, &Primitive)>();
                 let (renderable, primitive) = query.iter().next().expect("No camera found");
                 if !self.life.enabled {
                     camera_system.process_mouse(
@@ -343,7 +344,7 @@ impl Game for MobiusVisualizer {
             state.size.height as f32,
         ));
         let camera_system =
-            CameraSystem::new(75.0, 50.0, &state.core.render_context.device, &camera);
+            CameraSystem::new(75.0, 50.0, &state.engine.render_context.device, &camera);
         //registers system and creates bind_group
 
         let light = Light {
@@ -357,15 +358,14 @@ impl Game for MobiusVisualizer {
         };
         let light_system = LightSystem::init(
             &[light.clone(), light2.clone()],
-            &state.core.render_context.device,
+            &state.engine.render_context.device,
         );
-        let engine = &mut state.core.engine;
+        let engine = &mut state.engine;
         engine.add_entity((camera,));
-        engine.add_system(camera_system, &state.core.render_context.device);
-        engine.add_system(light_system, &state.core.render_context.device);
+        engine.add_system(camera_system);
+        engine.add_system(light_system);
         let primitive_shader =
-            state
-                .core
+            engine
                 .render_context
                 .device
                 .create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -373,8 +373,7 @@ impl Game for MobiusVisualizer {
                     source: wgpu::ShaderSource::Wgsl(include_str!("shaders/lights.wgsl").into()),
                 });
         let mobius_shader =
-            state
-                .core
+            engine
                 .render_context
                 .device
                 .create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -382,13 +381,11 @@ impl Game for MobiusVisualizer {
                     source: wgpu::ShaderSource::Wgsl(include_str!("shaders/mobius.wgsl").into()),
                 });
 
-        state
-            .core
+        engine
             .render_context
             .shaders
             .insert("lights".to_string(), primitive_shader);
-        state
-            .core
+        engine
             .render_context
             .shaders
             .insert("mobius".to_string(), mobius_shader);
@@ -406,17 +403,17 @@ impl Game for MobiusVisualizer {
         let grid_height = (segments_u * 2) as u32;
 
         let life_texture = Texture::create_life_texture(
-            &state.core.render_context.device,
-            &state.core.render_context.queue,
+            &engine.render_context.device,
+            &engine.render_context.queue,
             grid_width,
             grid_height,
             "GameOfLifeTexture",
         );
-        let mesh = mobius_mesh.make_mb(&state.core.render_context.device);
+        let mesh = mobius_mesh.make_mb(&mut engine.render_context);
 
         let ic = InstanceController::<InstanceRaw>::new(
             vec![Instance::default()],
-            &state.core.render_context.device,
+            &mut engine.render_context,
         );
 
         let duration = start.elapsed();
@@ -429,61 +426,43 @@ impl Game for MobiusVisualizer {
 
         let mobius_size_buffer = Buffer::new(
             &[mobius_size],
-            &state.core.render_context.device,
+            &engine.render_context.device,
             &BufferType::UniformBuffer,
         );
-        let material = MaterialBuilder::new()
+        let mobius_mat = MaterialBuilder::new()
             .add_layout("camera", engine.resources.get_system::<CameraSystem>())
             .add_layout("light", engine.resources.get_system::<LightSystem>())
             .add_texture(life_texture)
             .add_shader("mobius")
             .add_buffer(0, mobius_size_buffer)
-            .build(
-                &mesh.buffer_layout,
-                &state.core.render_context,
-                &ic.buffer_layout,
-            );
+            .build(&mesh, &ic, &mut engine.render_context);
 
-        let cube_mesh = cube::new().make_mb(&state.core.render_context.device);
+        let cube_mesh = cube::new().make_mb(&mut engine.render_context);
         let light_ic = InstanceController::<InstanceRaw>::new(
             vec![
                 Instance::new([100.0, 100.0, 1.0].into(), 1.0),
                 Instance::new([-100.0, -100.0, 1.0].into(), 1.0),
             ],
-            &state.core.render_context.device,
+            &mut engine.render_context,
         );
         let light_mat = MaterialBuilder::new()
             .add_layout("camera", engine.resources.get_system::<CameraSystem>())
             .add_layout("light", engine.resources.get_system::<LightSystem>())
             .add_shader("lights")
-            .build(
-                &cube_mesh.buffer_layout,
-                &state.core.render_context,
-                &light_ic.buffer_layout,
-            );
+            .build(&cube_mesh, &light_ic, &mut engine.render_context);
 
         //Should group renderList by material, so that we dont do many pipeline shifts
-
-        let gpu_objects = &mut state.core.render_context.gpu_objects;
-
-        let light_ic = gpu_objects.instance_controllers.insert(Box::new(light_ic));
-
-        let light_mesh = gpu_objects.meshes.insert(cube_mesh);
-        let light_mat = gpu_objects.materials.insert(light_mat);
 
         let light_entity = Renderable {
             material_handle: light_mat,
             instance_controller_handle: light_ic,
-            mesh_handle: light_mesh,
+            mesh_handle: cube_mesh,
         };
-        let mobius_ic = gpu_objects.instance_controllers.insert(Box::new(ic));
-        let mobius_mat = gpu_objects.materials.insert(material);
-        let mobius_mesh_handle = gpu_objects.meshes.insert(mesh);
 
         let mobius_entity = Renderable {
             material_handle: mobius_mat,
-            mesh_handle: mobius_mesh_handle,
-            instance_controller_handle: mobius_ic,
+            mesh_handle: mesh,
+            instance_controller_handle: ic,
         };
 
         engine.add_entity((light_entity, markers::Light));
@@ -499,16 +478,16 @@ impl Game for MobiusVisualizer {
         );
     }
 
-    fn resize(&mut self, core: &mut Core) {
+    fn resize(&mut self, engine: &mut Engine) {
         // let mut camera_system = self.world.query::<&mut CameraSystem>o();
         // let camera_system = camera_system.iter().next().unwrap();
 
-        let mut query = core.engine.world.query::<&mut Camera>();
+        let mut query = engine.world.query::<&mut Camera>();
         let camera = query.iter().next().expect("No camera found");
-        let camera_system = core.engine.resources.get_system_mut::<CameraSystem>();
+        let camera_system = engine.resources.get_system_mut::<CameraSystem>();
 
         camera.aspect =
-            core.render_context.config.width as f32 / core.render_context.config.height as f32;
+            engine.render_context.config.width as f32 / engine.render_context.config.height as f32;
         println!("{:?}", camera.aspect);
         let new_fov = map_value(camera.aspect, 0.8, 1.88, 25.0, 55.0);
         camera.fovy = new_fov;
