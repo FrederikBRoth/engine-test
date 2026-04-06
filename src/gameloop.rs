@@ -6,6 +6,7 @@ use sparmos_engine::{
         core::{
             buffer::{Buffer, BufferType},
             engine::Engine,
+            entities::World,
             geometry::Primitive,
             instance::{Instance, InstanceController, InstanceRaw},
             material::MaterialBuilder,
@@ -96,12 +97,12 @@ impl Default for MobiusVisualizer {
 }
 
 impl Game for MobiusVisualizer {
-    fn update(&mut self, dt: std::time::Duration, engine: &mut Engine) {
+    fn update(&mut self, dt: std::time::Duration, engine: &mut Engine, world: &mut World) {
         // let mut camera_system = self.world.query::<&mut CameraSystem>();
         // let camera_system = camera_system.iter().next().unwrap();
-        let mut query = engine.world.query::<&mut Camera>();
+        let mut query = world.entities.query::<&mut Camera>();
         let camera = query.iter().next().expect("No camera found");
-        let camera_system = engine.resources.get_system_mut::<CameraSystem>();
+        let camera_system = world.resources.get_system_mut::<CameraSystem>();
         camera_system.update_camera(dt, &engine.render_context, camera);
 
         self.life.calculate_iteration(dt);
@@ -127,13 +128,14 @@ impl Game for MobiusVisualizer {
         event: &winit::event::WindowEvent,
         screen: &winit::dpi::PhysicalSize<u32>,
         engine: &mut Engine,
+        world: &mut World,
     ) {
         // let mut camera_system = self.world.query::<&mut CameraSystem>();
         // let camera_system = camera_system.iter().next().unwrap();
         // let (entity, camera) = state
-        let mut query = engine.world.query::<&mut Camera>();
+        let mut query = world.entities.query::<&mut Camera>();
         let camera = query.iter().next().expect("No camera found");
-        let camera_system = engine.resources.get_system_mut::<CameraSystem>();
+        let camera_system = world.resources.get_system_mut::<CameraSystem>();
         match event {
             WindowEvent::KeyboardInput {
                 event:
@@ -218,7 +220,7 @@ impl Game for MobiusVisualizer {
                                 screen.width as f32,
                                 screen.height as f32,
                             );
-                            let mut query = engine.world.query::<(&Renderable, &Primitive)>();
+                            let mut query = world.entities.query::<(&Renderable, &Primitive)>();
                             let (renderable, primitive) =
                                 query.iter().next().expect("No camera found");
 
@@ -279,7 +281,7 @@ impl Game for MobiusVisualizer {
             WindowEvent::CursorMoved { position, .. } => {
                 self.cursor_pos = PhysicalPosition::new(position.x as f32, position.y as f32);
 
-                let mut query = engine.world.query::<(&Renderable, &Primitive)>();
+                let mut query = world.entities.query::<(&Renderable, &Primitive)>();
                 let (renderable, primitive) = query.iter().next().expect("No camera found");
                 if !self.life.enabled {
                     camera_system.process_mouse(
@@ -339,12 +341,14 @@ impl Game for MobiusVisualizer {
     }
 
     fn setup(&mut self, state: &mut State) {
+        let engine = &mut state.engine;
+        let world = &mut state.world;
+
         let camera = Camera::new(PhysicalSize::new(
             state.size.width as f32,
             state.size.height as f32,
         ));
-        let camera_system =
-            CameraSystem::new(75.0, 50.0, &state.engine.render_context.device, &camera);
+        let camera_system = CameraSystem::new(75.0, 50.0, &engine.render_context.device, &camera);
         //registers system and creates bind_group
 
         let light = Light {
@@ -358,12 +362,11 @@ impl Game for MobiusVisualizer {
         };
         let light_system = LightSystem::init(
             &[light.clone(), light2.clone()],
-            &state.engine.render_context.device,
+            &engine.render_context.device,
         );
-        let engine = &mut state.engine;
-        engine.add_entity((camera,));
-        engine.add_system(camera_system);
-        engine.add_system(light_system);
+        world.add_entity((camera,));
+        world.add_system(camera_system);
+        world.add_system(light_system);
         let primitive_shader =
             engine
                 .render_context
@@ -430,8 +433,8 @@ impl Game for MobiusVisualizer {
             &BufferType::UniformBuffer,
         );
         let mobius_mat = MaterialBuilder::new()
-            .add_layout("camera", engine.resources.get_system::<CameraSystem>())
-            .add_layout("light", engine.resources.get_system::<LightSystem>())
+            .add_layout("camera", world.resources.get_system::<CameraSystem>())
+            .add_layout("light", world.resources.get_system::<LightSystem>())
             .add_texture(life_texture)
             .add_shader("mobius")
             .add_buffer(0, mobius_size_buffer)
@@ -446,8 +449,8 @@ impl Game for MobiusVisualizer {
             &mut engine.render_context,
         );
         let light_mat = MaterialBuilder::new()
-            .add_layout("camera", engine.resources.get_system::<CameraSystem>())
-            .add_layout("light", engine.resources.get_system::<LightSystem>())
+            .add_layout("camera", world.resources.get_system::<CameraSystem>())
+            .add_layout("light", world.resources.get_system::<LightSystem>())
             .add_shader("lights")
             .build(&cube_mesh, &light_ic, &mut engine.render_context);
 
@@ -465,8 +468,8 @@ impl Game for MobiusVisualizer {
             instance_controller_handle: ic,
         };
 
-        engine.add_entity((light_entity, markers::Light));
-        engine.add_entity((mobius_entity, mobius_mesh, markers::Mobius));
+        world.add_entity((light_entity, markers::Light));
+        world.add_entity((mobius_entity, mobius_mesh, markers::Mobius));
 
         let game_state = vec![0; (segments_v - 1) * (segments_u * 2)];
 
@@ -478,13 +481,13 @@ impl Game for MobiusVisualizer {
         );
     }
 
-    fn resize(&mut self, engine: &mut Engine) {
+    fn resize(&mut self, engine: &mut Engine, world: &mut World) {
         // let mut camera_system = self.world.query::<&mut CameraSystem>o();
         // let camera_system = camera_system.iter().next().unwrap();
 
-        let mut query = engine.world.query::<&mut Camera>();
+        let mut query = world.entities.query::<&mut Camera>();
         let camera = query.iter().next().expect("No camera found");
-        let camera_system = engine.resources.get_system_mut::<CameraSystem>();
+        let camera_system = world.resources.get_system_mut::<CameraSystem>();
 
         camera.aspect =
             engine.render_context.config.width as f32 / engine.render_context.config.height as f32;
@@ -500,8 +503,8 @@ impl Game for MobiusVisualizer {
         // }
     }
 
-    fn gui_setup(&mut self, egui_renderer: &sparmos_engine::application::gui::EguiRenderer) {
-        egui::TopBottomPanel::top("my_panel").show(egui_renderer.context(), |ui| {
+    fn gui_setup(&mut self, ui: &mut Ui) {
+        egui::TopBottomPanel::top("my_panel").show(ui, |ui| {
             ui.horizontal(|ui| {
                 if ui
                     .toggle_value(&mut self.gui_state.lifeform_toggled, "Lifeform Library")
@@ -526,7 +529,7 @@ impl Game for MobiusVisualizer {
                 .resizable(false)
                 .min_width(self.gui_state.side_bar_min)
                 .max_width(self.gui_state.side_bar_max)
-                .show(egui_renderer.context(), |ui| {
+                .show(ui, |ui| {
                     ui.add_space(4.0);
                     ui.vertical_centered(|ui| {
                         ui.heading("Mobius Parameters");
@@ -594,7 +597,7 @@ impl Game for MobiusVisualizer {
                 .resizable(false)
                 .min_width(self.gui_state.side_bar_min)
                 .max_width(self.gui_state.side_bar_max)
-                .show(egui_renderer.context(), |ui| {
+                .show(ui, |ui| {
                     egui::ScrollArea::vertical()
                         .auto_shrink([false; 2]) // Optional: prevent auto-shrinking
                         .show(ui, |ui| {
