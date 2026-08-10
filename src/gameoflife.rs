@@ -2,7 +2,7 @@ use std::{collections::HashSet, ptr::read};
 
 use sparmos_engine::{
     cgmath::Vector2,
-    entity::core::geometry::{Primitive, PrimitiveVertex},
+    core::geometry::{Primitive, PrimitiveVertex},
     wgpu,
 };
 
