@@ -426,12 +426,10 @@ impl Game for MobiusVisualizer {
             height: grid_height,
         };
 
-        let mobius_size_buffer = Buffer::new(
+        let mobius_size_buffer = Buffer::new_init(
             &[mobius_size],
             &engine.render_context.device,
-            BufferType::UniformBuffer(UniformParameters {
-                ..Default::default()
-            }),
+            BufferType::UniformBuffer(UniformParameters::default()),
         );
         let mobius_mat = MaterialBuilder::new()
             .add_layout(
